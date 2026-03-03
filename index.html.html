@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GLOBAL CONFLICT MONITOR — WARZONE TRACKER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --red: #ff2222;
+    --orange: #ff7700;
+    --green: #00ff88;
+    --cyan: #00e5ff;
+    --yellow: #ffd700;
+    --bg: #040a0f;
+    --panel: #080f18;
+    --border: #0d2233;
+    --text: #b0c8d8;
+    --dim: #3a5568;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* CRT scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    height: 52px;
+    background: linear-gradient(90deg, #0a0f1a, #060c18, #0a0f1a);
+    border-bottom: 2px solid var(--red);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--red), transparent);
+    animation: scanH 3s linear infinite;
+  }
+
+  @keyframes scanH {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: var(--red);
+    letter-spacing: 3px;
+    text-shadow: 0 0 20px rgba(255,34,34,0.5);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo .dot {
+    width: 10px; height: 10px;
+    background: var(--red);
+    border-radius: 50%;
+    animation: pulse 1s ease-in-out infinite;
+    box-shadow: 0 0 10px var(--red);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  .header-center {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    color: var(--dim);
+    letter-spacing: 2px;
+    text-align: center;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 0.7rem;
+  }
+
+  .status-badge {
+    padding: 3px 10px;
+    border: 1px solid var(--red);
+    color: var(--red);
+    font-family: 'Orbitron', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    animation: blink 1.5s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .clock {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.8rem;
+    color: var(--cyan);
+  }
+
+  /* TICKER */
+  .ticker {
+    height: 28px;
+    background: rgba(255,34,34,0.08);
+    border-bottom: 1px solid rgba(255,34,34,0.3);
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .ticker-label {
+    background: var(--red);
+    color: #fff;
+    font-family: 'Orbitron', monospace;
+    font-size: 0.6rem;
+    padding: 0 12px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    letter-spacing: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ticker-track {
+    display: flex;
+    white-space: nowrap;
+    animation: ticker 60s linear infinite;
+    font-size: 0.7rem;
+    color: #ff8888;
+  }
+
+  @keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* MAIN LAYOUT */
+  .main {
+    display: grid;
+    grid-template-columns: 280px 1fr 300px;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 80px);
+    gap: 0;
+  }
+
+  /* PANELS */
+  .panel {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .panel::-webkit-scrollbar { width: 4px; }
+  .panel::-webkit-scrollbar-track { background: var(--bg); }
+  .panel::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .panel-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--cyan);
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+  }
+
+  .panel-title::before {
+    content: '▶';
+    color: var(--red);
+    font-size: 0.5rem;
+  }
+
+  /* MAP */
+  .map-container {
+    position: relative;
+    background: #020810;
+  }
+
+  #map {
+    width: 100%;
+    height: 100%;
+    filter: saturate(0.3) brightness(0.7) hue-rotate(180deg);
+  }
+
+  .map-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--red), var(--orange), var(--red), transparent);
+    animation: sweep 4s linear infinite;
+    z-index: 999;
+  }
+
+  @keyframes sweep {
+    0% { opacity: 1; top: 0; }
+    100% { opacity: 0; top: 100%; }
+  }
+
+  /* ALERT CARDS */
+  .alert-card {
+    margin: 8px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--red);
+    background: rgba(255,34,34,0.05);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .alert-card:hover {
+    background: rgba(255,34,34,0.12);
+    transform: translateX(3px);
+  }
+
+  .alert-card.orange { border-left-color: var(--orange); background: rgba(255,119,0,0.05); }
+  .alert-card.yellow { border-left-color: var(--yellow); background: rgba(255,215,0,0.05); }
+  .alert-card.green { border-left-color: var(--green); background: rgba(0,255,136,0.05); }
+
+  .alert-card .alert-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+
+  .alert-type {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: var(--red);
+  }
+
+  .alert-card.orange .alert-type { color: var(--orange); }
+  .alert-card.yellow .alert-type { color: var(--yellow); }
+  .alert-card.green .alert-type { color: var(--green); }
+
+  .alert-time {
+    font-size: 0.6rem;
+    color: var(--dim);
+  }
+
+  .alert-location {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #e0e8f0;
+    margin-bottom: 2px;
+  }
+
+  .alert-desc {
+    font-size: 0.65rem;
+    color: var(--dim);
+    line-height: 1.4;
+  }
+
+  /* STATS */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    margin: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .stat-cell {
+    background: var(--panel);
+    padding: 10px;
+    text-align: center;
+  }
+
+  .stat-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--red);
+    display: block;
+    text-shadow: 0 0 10px rgba(255,34,34,0.4);
+  }
+
+  .stat-val.orange { color: var(--orange); text-shadow: 0 0 10px rgba(255,119,0,0.4); }
+  .stat-val.cyan { color: var(--cyan); text-shadow: 0 0 10px rgba(0,229,255,0.4); }
+  .stat-val.yellow { color: var(--yellow); }
+
+  .stat-lbl {
+    font-size: 0.55rem;
+    color: var(--dim);
+    letter-spacing: 1px;
+    margin-top: 3px;
+    display: block;
+  }
+
+  /* VEHICLE TRACKER */
+  .vehicle-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 0.2s;
+  }
+
+  .vehicle-item:hover { background: rgba(255,255,255,0.02); }
+
+  .vehicle-icon {
+    font-size: 1.1rem;
+    width: 28px;
+    text-align: center;
+  }
+
+  .vehicle-info { flex: 1; }
+
+  .vehicle-id {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.6rem;
+    color: var(--cyan);
+    letter-spacing: 1px;
+  }
+
+  .vehicle-status {
+    font-size: 0.65rem;
+    color: var(--dim);
+  }
+
+  .vehicle-badge {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.5rem;
+    padding: 2px 6px;
+    border: 1px solid;
+    letter-spacing: 1px;
+  }
+
+  .badge-active { color: var(--green); border-color: var(--green); }
+  .badge-alert { color: var(--red); border-color: var(--red); animation: blink 0.8s infinite; }
+  .badge-watch { color: var(--orange); border-color: var(--orange); }
+
+  /* MINIBAR */
+  .minibar {
+    height: 4px;
+    background: var(--border);
+    margin: 4px 14px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .minibar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--red), var(--orange));
+    border-radius: 2px;
+    transition: width 1s ease;
+  }
+
+  /* MAP LEGEND */
+  .map-legend {
+    position: absolute;
+    bottom: 20px;
+    left: 14px;
+    background: rgba(4,10,15,0.9);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    z-index: 998;
+    font-size: 0.65rem;
+  }
+
+  .legend-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.55rem;
+    color: var(--cyan);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* RIGHT PANEL EXTRAS */
+  .threat-meter {
+    margin: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    background: rgba(255,34,34,0.03);
+  }
+
+  .threat-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.55rem;
+    color: var(--red);
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  .threat-level {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .threat-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .threat-bar {
+    height: 100%;
+    border-radius: 3px;
+  }
+
+  .threat-name { font-size: 0.6rem; color: var(--dim); width: 80px; flex-shrink: 0; }
+  .threat-pct { font-size: 0.6rem; width: 30px; text-align: right; }
+
+  /* MISSILE ALERT */
+  .missile-alert {
+    margin: 8px;
+    padding: 12px;
+    border: 1px solid var(--red);
+    background: rgba(255,34,34,0.08);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .missile-alert::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,34,34,0.1), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+
+  @keyframes shimmer {
+    100% { left: 200%; }
+  }
+
+  .missile-header {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    color: var(--red);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .missile-header .blink-dot {
+    width: 7px; height: 7px;
+    background: var(--red);
+    border-radius: 50%;
+    animation: pulse 0.5s ease infinite;
+    box-shadow: 0 0 6px var(--red);
+  }
+
+  .missile-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: var(--text);
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .missile-row:last-child { border-bottom: none; }
+  .missile-key { color: var(--dim); }
+  .missile-val { color: #ff8888; font-weight: bold; }
+
+  /* CONFLICT LIST */
+  .conflict-item {
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .conflict-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #e0e8f0;
+    margin-bottom: 2px;
+  }
+
+  .conflict-meta {
+    display: flex;
+    gap: 8px;
+    font-size: 0.6rem;
+    color: var(--dim);
+  }
+
+  .intensity {
+    padding: 1px 5px;
+    font-size: 0.55rem;
+    font-family: 'Orbitron', monospace;
+    letter-spacing: 1px;
+  }
+
+  .i-critical { background: rgba(255,34,34,0.2); color: var(--red); border: 1px solid var(--red); }
+  .i-high { background: rgba(255,119,0,0.2); color: var(--orange); border: 1px solid var(--orange); }
+  .i-medium { background: rgba(255,215,0,0.2); color: var(--yellow); border: 1px solid var(--yellow); }
+
+  /* LEAFLET CUSTOM */
+  .leaflet-container { background: #020810 !important; }
+  .leaflet-tile { filter: saturate(0.4) brightness(0.5) hue-rotate(200deg) !important; }
+
+  /* GRID OVERLAY */
+  .grid-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 997;
+  }
+
+  /* CORNER BRACKETS */
+  .corner {
+    position: absolute;
+    width: 20px; height: 20px;
+    z-index: 998;
+  }
+
+  .corner.tl { top: 8px; left: 8px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+  .corner.tr { top: 8px; right: 8px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+  .corner.bl { bottom: 8px; left: 8px; border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+  .corner.br { bottom: 8px; right: 8px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+
+  /* SECTION SEPARATOR */
+  .sep {
+    height: 1px;
+    background: linear-gradient(90deg, var(--border), rgba(0,229,255,0.2), var(--border));
+    margin: 6px 8px;
+  }
+
+  /* COUNTER ANIM */
+  @keyframes countUp {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-in { animation: countUp 0.4s ease forwards; }
+
+  /* RADAR RINGS on map */
+  .radar-ping {
+    position: absolute;
+    border-radius: 50%;
+    border: 2px solid var(--red);
+    animation: radarPing 2s ease-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes radarPing {
+    0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; }
+    100% { transform: translate(-50%,-50%) scale(3); opacity: 0; }
+  }
+
+  .scroll-anim { animation: scrollUp 20s linear infinite; }
+
+  @keyframes scrollUp {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-50%); }
+  }
+
+  .right-panel {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+  }
+  .right-panel::-webkit-scrollbar { width: 4px; }
+  .right-panel::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">
+    <div class="dot"></div>
+    WARZONE<span style="color:#fff">TRACKER</span><span style="font-size:0.5rem;color:var(--dim);letter-spacing:1px">v4.1</span>
+  </div>
+  <div class="header-center">
+    GLOBAL CONFLICT INTELLIGENCE SYSTEM &nbsp;|&nbsp; CLASSIFIED — MONITORING ACTIVE
+  </div>
+  <div class="header-right">
+    <div class="status-badge">● LIVE</div>
+    <div class="clock" id="clock">--:--:-- UTC</div>
+  </div>
+</div>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-label">⚠ BREAKING</div>
+  <div class="ticker-track" id="ticker-track">
+    &nbsp;&nbsp;&nbsp;&nbsp;
+    🚨 RED ALERT: Missile launch detected — Eastern Mediterranean &nbsp;•&nbsp;
+    ✈ 47 combat aircraft airborne over Eastern Europe &nbsp;•&nbsp;
+    🛥 Russian Black Sea Fleet repositioning — 3 warships moving west &nbsp;•&nbsp;
+    🚨 Artillery barrage reported near Kherson region — Ukraine &nbsp;•&nbsp;
+    ⚠ Iran IRGC forces on heightened alert — Gulf region &nbsp;•&nbsp;
+    🛸 Unidentified aerial objects detected near Taiwan Strait &nbsp;•&nbsp;
+    💥 Airstrike confirmed — Rafah, Gaza Strip — 06:41 UTC &nbsp;•&nbsp;
+    🚀 ICBM test detected — North Korea — trajectory over Sea of Japan &nbsp;•&nbsp;
+    🛥 USS Gerald R. Ford carrier group — South China Sea — 400km from coast &nbsp;•&nbsp;
+    ⚠ Sudan: RSF forces advancing on Khartoum — heavy fighting &nbsp;•&nbsp;
+    🚨 Lebanon–Israel border tension escalating — IDF on high alert &nbsp;•&nbsp;
+    ✈ B-52 bombers deployed to Diego Garcia — Pacific Command &nbsp;&nbsp;&nbsp;&nbsp;
+    🚨 RED ALERT: Missile launch detected — Eastern Mediterranean &nbsp;•&nbsp;
+    ✈ 47 combat aircraft airborne over Eastern Europe &nbsp;•&nbsp;
+    🛥 Russian Black Sea Fleet repositioning — 3 warships moving west &nbsp;•&nbsp;
+    🚨 Artillery barrage reported near Kherson region — Ukraine &nbsp;•&nbsp;
+    ⚠ Iran IRGC forces on heightened alert — Gulf region &nbsp;•&nbsp;
+    🛸 Unidentified aerial objects detected near Taiwan Strait &nbsp;•&nbsp;
+    💥 Airstrike confirmed — Rafah, Gaza Strip — 06:41 UTC &nbsp;•&nbsp;
+    🚀 ICBM test detected — North Korea — trajectory over Sea of Japan &nbsp;•&nbsp;
+    🛥 USS Gerald R. Ford carrier group — South China Sea — 400km from coast &nbsp;•&nbsp;
+    ⚠ Sudan: RSF forces advancing on Khartoum — heavy fighting &nbsp;•&nbsp;
+    🚨 Lebanon–Israel border tension escalating — IDF on high alert &nbsp;•&nbsp;
+    ✈ B-52 bombers deployed to Diego Garcia — Pacific Command &nbsp;&nbsp;&nbsp;&nbsp;
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT PANEL -->
+  <div class="panel">
+    <div class="panel-title">ACTIVE CONFLICT ZONES</div>
+
+    <div class="stat-grid">
+      <div class="stat-cell">
+        <span class="stat-val" id="s1">12</span>
+        <span class="stat-lbl">ACTIVE WARS</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-val orange" id="s2">38</span>
+        <span class="stat-lbl">INCIDENTS/24H</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-val cyan" id="s3">247</span>
+        <span class="stat-lbl">AIRCRAFT UP</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-val yellow" id="s4">63</span>
+        <span class="stat-lbl">WARSHIPS</span>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <div class="panel-title" style="font-size:0.55rem">🔴 CRITICAL ZONES</div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇺🇦 Ukraine — Russia</div>
+      <div class="conflict-meta">
+        <span class="intensity i-critical">CRITICAL</span>
+        <span>Day 742 • Front: 1,100km</span>
+      </div>
+      <div class="minibar" style="margin:6px 0 0"><div class="minibar-fill" style="width:92%"></div></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇮🇱 Gaza — Israel</div>
+      <div class="conflict-meta">
+        <span class="intensity i-critical">CRITICAL</span>
+        <span>Active strikes • Air + Ground</span>
+      </div>
+      <div class="minibar" style="margin:6px 0 0"><div class="minibar-fill" style="width:88%"></div></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇸🇩 Sudan Civil War</div>
+      <div class="conflict-meta">
+        <span class="intensity i-high">HIGH</span>
+        <span>RSF vs SAF • Khartoum</span>
+      </div>
+      <div class="minibar" style="margin:6px 0 0"><div class="minibar-fill" style="width:78%; background: linear-gradient(90deg, var(--orange), #ffaa00)"></div></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇲🇲 Myanmar</div>
+      <div class="conflict-meta">
+        <span class="intensity i-high">HIGH</span>
+        <span>Junta vs Resistance</span>
+      </div>
+      <div class="minibar" style="margin:6px 0 0"><div class="minibar-fill" style="width:65%; background: linear-gradient(90deg, var(--orange), #ffaa00)"></div></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇾🇪 Yemen</div>
+      <div class="conflict-meta">
+        <span class="intensity i-medium">MEDIUM</span>
+        <span>Houthi attacks continuing</span>
+      </div>
+      <div class="minibar" style="margin:6px 0 0"><div class="minibar-fill" style="width:55%; background: linear-gradient(90deg, var(--yellow), #ffaa00)"></div></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇸🇾 Syria</div>
+      <div class="conflict-meta">
+        <span class="intensity i-medium">MEDIUM</span>
+        <span>Multiple factions active</span>
+      </div>
+      <div class="minibar" style="margin:6px 0 0"><div class="minibar-fill" style="width:50%; background: linear-gradient(90deg, var(--yellow), #ffaa00)"></div></div>
+    </div>
+
+    <div class="sep"></div>
+    <div class="panel-title" style="font-size:0.55rem">⚠ TENSION HOTSPOTS</div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇹🇼 Taiwan Strait</div>
+      <div class="conflict-meta"><span class="intensity i-high">ELEVATED</span><span>PLA exercises ongoing</span></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇱🇧 Lebanon — Israel</div>
+      <div class="conflict-meta"><span class="intensity i-high">HIGH</span><span>Cross-border fire</span></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇵🇰 Pakistan — India</div>
+      <div class="conflict-meta"><span class="intensity i-medium">WATCH</span><span>LoC skirmishes</span></div>
+    </div>
+
+    <div class="conflict-item">
+      <div class="conflict-name">🇰🇵 Korean Peninsula</div>
+      <div class="conflict-meta"><span class="intensity i-medium">WATCH</span><span>DPRK missile tests</span></div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div class="map-container">
+    <div class="map-overlay"></div>
+    <div class="grid-overlay"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div id="map"></div>
+
+    <div class="map-legend">
+      <div class="legend-title">MAP LEGEND</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Active War Zone</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>High Tension</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div>Watch Zone</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Naval Asset</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00ff88"></div>Allied Forces</div>
+      <div class="legend-item">💥 Airstrike&nbsp; 🚀 Missile &nbsp; ✈ Aircraft</div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <div class="panel-title">LIVE ALERTS</div>
+
+    <!-- MISSILE ALERT -->
+    <div class="missile-alert">
+      <div class="missile-header"><div class="blink-dot"></div>🚀 MISSILE DETECTION</div>
+      <div class="missile-row"><span class="missile-key">TYPE</span><span class="missile-val">Ballistic (MRBM)</span></div>
+      <div class="missile-row"><span class="missile-key">ORIGIN</span><span class="missile-val">N. Korea</span></div>
+      <div class="missile-row"><span class="missile-key">TRAJECTORY</span><span class="missile-val">Sea of Japan</span></div>
+      <div class="missile-row"><span class="missile-key">RANGE EST.</span><span class="missile-val">~1,200 km</span></div>
+      <div class="missile-row"><span class="missile-key">STATUS</span><span class="missile-val">TRACKING</span></div>
+    </div>
+
+    <div id="alert-feed"></div>
+
+    <div class="sep"></div>
+    <div class="panel-title" style="font-size:0.55rem">🛥 NAVAL ASSETS</div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">🛥</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">USS GERALD R. FORD (CVN-78)</div>
+        <div class="vehicle-status">S. China Sea • 14.2kn</div>
+      </div>
+      <div class="vehicle-badge badge-alert">ALERT</div>
+    </div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">🛥</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">HMS PRINCE OF WALES</div>
+        <div class="vehicle-status">Atlantic • 18.7kn</div>
+      </div>
+      <div class="vehicle-badge badge-active">ACTIVE</div>
+    </div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">🛥</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">INS VIKRAMADITYA</div>
+        <div class="vehicle-status">Arabian Sea • 12.1kn</div>
+      </div>
+      <div class="vehicle-badge badge-active">ACTIVE</div>
+    </div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">🚢</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">RFS ADMIRAL GORSHKOV</div>
+        <div class="vehicle-status">Black Sea • 8.4kn</div>
+      </div>
+      <div class="vehicle-badge badge-watch">WATCH</div>
+    </div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">🚢</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">CNS LIAONING (CV-16)</div>
+        <div class="vehicle-status">Taiwan Strait • 11.3kn</div>
+      </div>
+      <div class="vehicle-badge badge-alert">ALERT</div>
+    </div>
+
+    <div class="sep"></div>
+    <div class="panel-title" style="font-size:0.55rem">✈ AIRCRAFT ACTIVITY</div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">✈</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">F-35 SORTIES — ISRAEL</div>
+        <div class="vehicle-status">12 airborne • Gaza ops</div>
+      </div>
+      <div class="vehicle-badge badge-alert">ALERT</div>
+    </div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">✈</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">Su-35 PATROL — RUSSIA</div>
+        <div class="vehicle-status">Ukraine border • 8 units</div>
+      </div>
+      <div class="vehicle-badge badge-watch">WATCH</div>
+    </div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">🚁</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">MQ-9 REAPER — USAF</div>
+        <div class="vehicle-status">Gulf of Aden • ISR</div>
+      </div>
+      <div class="vehicle-badge badge-active">ACTIVE</div>
+    </div>
+
+    <div class="vehicle-item">
+      <div class="vehicle-icon">✈</div>
+      <div class="vehicle-info">
+        <div class="vehicle-id">B-52 STRATOFORTRESS</div>
+        <div class="vehicle-status">Pacific — 2 deployed</div>
+      </div>
+      <div class="vehicle-badge badge-watch">WATCH</div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- THREAT METER -->
+    <div class="threat-meter">
+      <div class="threat-title">◈ GLOBAL THREAT INDEX</div>
+
+      <div class="threat-level">
+        <span class="threat-name">Nuclear</span>
+        <div class="threat-bar-wrap"><div class="threat-bar" style="width:65%; background: linear-gradient(90deg, #ff2222, #ff6600)"></div></div>
+        <span class="threat-pct" style="color:var(--red)">65%</span>
+      </div>
+
+      <div class="threat-level">
+        <span class="threat-name">Cyber</span>
+        <div class="threat-bar-wrap"><div class="threat-bar" style="width:82%; background: linear-gradient(90deg, #ff6600, #ffaa00)"></div></div>
+        <span class="threat-pct" style="color:var(--orange)">82%</span>
+      </div>
+
+      <div class="threat-level">
+        <span class="threat-name">Naval</span>
+        <div class="threat-bar-wrap"><div class="threat-bar" style="width:71%; background: linear-gradient(90deg, var(--cyan), var(--green))"></div></div>
+        <span class="threat-pct" style="color:var(--cyan)">71%</span>
+      </div>
+
+      <div class="threat-level">
+        <span class="threat-name">Air</span>
+        <div class="threat-bar-wrap"><div class="threat-bar" style="width:88%; background: linear-gradient(90deg, #ff2222, #ff6600)"></div></div>
+        <span class="threat-pct" style="color:var(--red)">88%</span>
+      </div>
+
+      <div class="threat-level">
+        <span class="threat-name">Ground</span>
+        <div class="threat-bar-wrap"><div class="threat-bar" style="width:76%; background: linear-gradient(90deg, var(--yellow), var(--orange))"></div></div>
+        <span class="threat-pct" style="color:var(--yellow)">76%</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// CLOCK
+function updateClock() {
+  const now = new Date();
+  const h = String(now.getUTCHours()).padStart(2,'0');
+  const m = String(now.getUTCMinutes()).padStart(2,'0');
+  const s = String(now.getUTCSeconds()).padStart(2,'0');
+  document.getElementById('clock').textContent = `${h}:${m}:${s} UTC`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// MAP
+const map = L.map('map', {
+  center: [25, 20],
+  zoom: 2.5,
+  zoomControl: false,
+  attributionControl: false
+});
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  opacity: 0.5
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// Custom icons
+function makeIcon(emoji, size=24) {
+  return L.divIcon({
+    html: `<div style="font-size:${size}px;filter:drop-shadow(0 0 6px red);animation:pulse 1s ease infinite">${emoji}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+    className: ''
+  });
+}
+
+function redDot(color='#ff2222', size=14) {
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border-radius:50%;border:2px solid #fff2;box-shadow:0 0 12px ${color};animation:pulse2 1.5s ease infinite"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+    className: ''
+  });
+}
+
+// Style for pulse animation in map
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes pulse2 {
+    0%,100%{opacity:1;transform:scale(1)}
+    50%{opacity:0.5;transform:scale(0.8)}
+  }
+`;
+document.head.appendChild(style);
+
+// CONFLICT ZONES — circles
+const conflicts = [
+  { latlng: [48.5, 34.0], color: '#ff2222', radius: 500000, label: '🇺🇦 Ukraine War Zone', popup: '🔴 CRITICAL — Active frontline. Artillery, drones, missile strikes daily.' },
+  { latlng: [31.5, 34.5], color: '#ff2222', radius: 120000, label: '🇮🇱 Gaza', popup: '🔴 CRITICAL — Airstrikes active. Ground operations ongoing.' },
+  { latlng: [15.5, 32.5], color: '#ff7700', radius: 400000, label: '🇸🇩 Sudan', popup: '🟠 HIGH — RSF vs SAF fighting across Khartoum & Darfur.' },
+  { latlng: [20.0, 45.0], color: '#ffd700', radius: 350000, label: '🇾🇪 Yemen', popup: '🟡 MEDIUM — Houthi missile/drone attacks. Red Sea shipping threat.' },
+  { latlng: [35.0, 38.0], color: '#ffd700', radius: 200000, label: '🇸🇾 Syria', popup: '🟡 MEDIUM — Multiple armed groups. Israeli airstrikes continuing.' },
+  { latlng: [17.0, 96.0], color: '#ff7700', radius: 300000, label: '🇲🇲 Myanmar', popup: '🟠 HIGH — Military junta vs resistance forces.' },
+  { latlng: [33.5, 36.5], color: '#ff7700', radius: 80000, label: '🇱🇧 Lebanon', popup: '🟠 HIGH — Cross-border exchanges with Israel.' },
+  { latlng: [5.0, 15.0], color: '#ffd700', radius: 250000, label: '🇳🇬 Nigeria', popup: '🟡 Boko Haram & ISWAP activity — NE Nigeria.' },
+];
+
+conflicts.forEach(c => {
+  L.circle(c.latlng, {
+    color: c.color,
+    fillColor: c.color,
+    fillOpacity: 0.08,
+    opacity: 0.5,
+    weight: 1.5,
+    radius: c.radius
+  }).addTo(map).bindPopup(`<div style="font-family:monospace;font-size:12px;background:#040a0f;color:#b0c8d8;border:1px solid #ff2222;padding:8px">${c.popup}</div>`);
+
+  L.marker(c.latlng, { icon: redDot(c.color, 12) }).addTo(map)
+    .bindTooltip(c.label, { className: 'war-tooltip', direction: 'top' });
+});
+
+// NAVAL ASSETS
+const naval = [
+  { latlng: [14.5, 118.0], label: '🛥 USS Gerald R. Ford (CVN-78)\nS. China Sea', color: '#00e5ff' },
+  { latlng: [45.0, -30.0], label: '🛥 HMS Prince of Wales\nAtlantic', color: '#00ff88' },
+  { latlng: [15.0, 65.0], label: '🛥 INS Vikramaditya\nArabian Sea', color: '#00ff88' },
+  { latlng: [43.0, 33.0], label: '🚢 RFS Admiral Gorshkov\nBlack Sea', color: '#ff7700' },
+  { latlng: [24.5, 120.0], label: '🚢 CNS Liaoning (CV-16)\nTaiwan Strait', color: '#ff2222' },
+  { latlng: [12.5, 44.0], label: '🛥 USS Dwight Eisenhower\nRed Sea', color: '#00e5ff' },
+];
+
+naval.forEach(n => {
+  L.marker(n.latlng, {
+    icon: L.divIcon({
+      html: `<div style="color:${n.color};font-size:18px;filter:drop-shadow(0 0 5px ${n.color})">⬧</div>`,
+      iconSize: [18,18], iconAnchor: [9,9], className:''
+    })
+  }).addTo(map).bindTooltip(n.label.replace('\n',' — '), { direction: 'top', className: '' });
+});
+
+// MISSILE / AIRCRAFT
+const assets = [
+  { latlng: [39.0, 128.0], icon: '🚀', label: 'DPRK Missile Launch — Tracked' },
+  { latlng: [31.8, 35.2], icon: '✈', label: 'IDF F-35 Sortie — Active' },
+  { latlng: [50.0, 36.0], icon: '✈', label: 'Ukraine Air Patrol' },
+  { latlng: [48.0, 40.0], icon: '✈', label: 'Russian Su-35 Patrol' },
+  { latlng: [24.8, 120.5], icon: '✈', label: 'PLA Air Activity — Taiwan Strait' },
+  { latlng: [13.0, 45.5], icon: '🚁', label: 'MQ-9 Reaper — Gulf of Aden ISR' },
+];
+
+assets.forEach(a => {
+  L.marker(a.latlng, {
+    icon: L.divIcon({
+      html: `<div style="font-size:16px;animation:pulse 1s infinite">${a.icon}</div>`,
+      iconSize:[20,20], iconAnchor:[10,10], className:''
+    })
+  }).addTo(map).bindTooltip(a.label, { direction:'top' });
+});
+
+// LIVE ALERT FEED
+const alerts = [
+  { type: 'AIRSTRIKE', cls: '', loc: 'Rafah, Gaza Strip', desc: 'IDF conducts precision strike on weapons cache. Multiple secondaries reported.', time: '4m ago' },
+  { type: 'RED ALERT', cls: '', loc: 'Kherson Region, Ukraine', desc: 'Heavy artillery barrage from Russian positions. 40+ rounds in 10 minutes.', time: '7m ago' },
+  { type: 'NAVAL MOVE', cls: 'orange', loc: 'Taiwan Strait', desc: 'PLA CNS Liaoning carrier group detected, 8 escorts. Taiwan ADIZ penetrated.', time: '12m ago' },
+  { type: 'MISSILE', cls: '', loc: 'Sea of Japan', desc: 'North Korean MRBM launch confirmed by NORAD. Range ~1,200km. Splashed down.', time: '18m ago' },
+  { type: 'CYBER OPS', cls: 'orange', loc: 'Kiev, Ukraine', desc: 'Large-scale cyberattack on Ukrainian power grid infrastructure detected.', time: '22m ago' },
+  { type: 'TROOPS', cls: 'yellow', loc: 'Sudan — Khartoum', desc: 'RSF forces advance on three fronts. Civilian evacuations underway.', time: '31m ago' },
+  { type: 'AIRSTRIKE', cls: '', loc: 'Homs Province, Syria', desc: 'IAF strikes reported on suspected Iranian weapons depot.', time: '45m ago' },
+  { type: 'DRONE', cls: 'orange', loc: 'Red Sea', desc: 'Houthi drone swarm intercepted by USS Gravely. 4 of 6 neutralized.', time: '52m ago' },
+  { type: 'TENSION', cls: 'green', loc: 'Korean Peninsula', desc: 'US–ROK joint exercises extended. B-52 participation confirmed.', time: '1h ago' },
+];
+
+const feed = document.getElementById('alert-feed');
+alerts.forEach((a, i) => {
+  setTimeout(() => {
+    const card = document.createElement('div');
+    card.className = `alert-card ${a.cls} animate-in`;
+    card.innerHTML = `
+      <div class="alert-header">
+        <span class="alert-type">${a.type}</span>
+        <span class="alert-time">${a.time}</span>
+      </div>
+      <div class="alert-location">${a.loc}</div>
+      <div class="alert-desc">${a.desc}</div>
+    `;
+    feed.appendChild(card);
+  }, i * 300);
+});
+
+// COUNTER ANIMATION
+function animCount(id, target, duration=1500) {
+  const el = document.getElementById(id);
+  let start = 0;
+  const step = target / (duration / 30);
+  const timer = setInterval(() => {
+    start = Math.min(start + step, target);
+    el.textContent = Math.round(start);
+    if (start >= target) clearInterval(timer);
+  }, 30);
+}
+setTimeout(() => {
+  animCount('s1', 12);
+  animCount('s2', 38);
+  animCount('s3', 247);
+  animCount('s4', 63);
+}, 500);
+
+// LIVE COUNTER UPDATES (simulate live data)
+setInterval(() => {
+  const s2 = document.getElementById('s2');
+  const current = parseInt(s2.textContent);
+  const change = Math.random() > 0.5 ? 1 : 0;
+  if (change) {
+    s2.textContent = current + 1;
+    s2.style.color = '#ff4444';
+    setTimeout(() => s2.style.color = 'var(--orange)', 400);
+  }
+}, 8000);
+
+// Threat bars animation
+document.querySelectorAll('.threat-bar').forEach(bar => {
+  const base = parseInt(bar.style.width);
+  setInterval(() => {
+    const jitter = (Math.random() * 6) - 3;
+    bar.style.width = Math.max(40, Math.min(98, base + jitter)) + '%';
+  }, 3000);
+});
+</script>
+</body>
+</html>
